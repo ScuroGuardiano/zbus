@@ -1,24 +1,40 @@
 const std = @import("std");
+const zbus = @import("./sd_bus.zig");
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    var bus = try zbus.defaultSystem();
+    defer bus.deinit();
+    const callMessage = try bus.messageNewMethodCall(
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "ListUnits",
+    );
+    var reply = try bus.call(callMessage, 0);
+    const RetType = struct {
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+        u32 = 0,
+        [*c]const u8 = undefined,
+        [*c]const u8 = undefined,
+    };
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    try reply.enterContainer('a', "(ssssssouso)");
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    const allocator = std.heap.c_allocator;
 
-    try bw.flush(); // don't forget to flush!
-}
+    while (true) {
+        var x = try allocator.create(RetType);
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+        const r = try reply.read("(ssssssouso)", .{ &x[0], &x[1], &x[2], &x[3], &x[4], &x[5], &x[6], &x[7], &x[8], &x[9] });
+        if (!r) break;
+        std.debug.print("{s}:{s}:{s}:{s}:{s}:{s}:{s}:{d}:{s}:{s}\n", x.*);
+    }
+
+    try reply.exitContainer();
 }
